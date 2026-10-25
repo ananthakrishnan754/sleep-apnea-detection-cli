@@ -67,10 +67,11 @@ def main():
     
     # Process
     with torch.no_grad():
-        spec = ecg_to_spectrogram(ecg[:6000] if len(ecg) >= 6000 else np.pad(ecg, (0,6000-len(ecg))))
+        ecg_seg = ecg[:6000] if len(ecg) >= 6000 else np.pad(ecg, (0,6000-len(ecg)))
+        spec = ecg_to_spectrogram(ecg_seg)
         spec_t = torch.from_numpy(spec).unsqueeze(0).to(device)
         
-        rr = extract_rr(ecg[:6000] if len(ecg) >= 6000 else np.pad(ecg, (0,6000-len(ecg))))
+        rr = extract_rr(ecg_seg)
         if len(rr) == 0:
             rr = np.ones(60) * 600
         rr = rr[:60]
@@ -105,9 +106,9 @@ def main():
     print(f'Severity: {sev}')
     print('-'*60)
     print('\n[MODEL] CNN-BiLSTM + Attention with Spectrogram + RR + SpO2 fusion')
+    print('[DATA] Using trained weights from weights/fusion_best.pth')
     print('='*60)
     
-    # Save result
     result = {
         'prediction': pred,
         'confidence': conf,
