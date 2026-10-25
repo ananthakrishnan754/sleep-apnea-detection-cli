@@ -14,8 +14,8 @@ from preprocessing.spo2_prep import spo2_features
 
 def main():
     ap = argparse.ArgumentParser(description='Predict Sleep Apnea from ECG file using trained model')
-    ap.add_argument('--input', required=True, help='Path to ECG file (.npy, .txt, or .json)')
-    ap.add_argument('--spo2', help='Path to SpO2 file or comma separated values')
+    ap.add_argument('--input', required=True)
+    ap.add_argument('--spo2', help='SpO2 values or file')
     ap.add_argument('--model', default='weights/fusion_best.pth')
     args = ap.parse_args()
     
@@ -66,7 +66,7 @@ def main():
     with torch.no_grad():
         ecg_seg = ecg[:6000] if len(ecg) >= 6000 else np.pad(ecg, (0,6000-len(ecg)))
         spec = ecg_to_spectrogram(ecg_seg)
-        spec = spec[:1, :, :]  # take only first channel
+        spec = spec[:1, :, :]
         spec_t = torch.from_numpy(spec).unsqueeze(0).to(device)
         
         rr = extract_rr(ecg_seg)
@@ -75,7 +75,8 @@ def main():
         rr = rr[:60]
         if len(rr) < 60:
             rr = np.pad(rr, (0, 60-len(rr)), constant_values=rr[-1] if len(rr)>0 else 600)
-        rr_t = torch.from_numpy(rr.reshape(1,60,1).astype(np.float32)).to(device)
+        rr_feats = np.stack([rr, np.diff(np.concatenate([[rr[0]], rr])), np.gradient(rr)], axis=1)
+        rr_t = torch.from_numpy(rr_feats.reshape(1,60,3).astype(np.float32)).to(device)
         
         spo2_f = spo2_features(spo2_arr)
         spo2_t = torch.from_numpy(spo2_f.reshape(1,9).astype(np.float32)).to(device)
@@ -86,14 +87,10 @@ def main():
     
     pred = 'APNEA DETECTED' if conf > 0.5 else 'NORMAL'
     ahi = round(conf * 40, 1)
-    if ahi < 5:
-        sev = 'Normal'
-    elif ahi < 15:
-        sev = 'Mild'
-    elif ahi < 30:
-        sev = 'Moderate'
-    else:
-        sev = 'Severe'
+    if ahi < 5: sev = 'Normal'
+    elif ahi < 15: sev = 'Mild'
+    elif ahi < 30: sev = 'Moderate'
+    else: sev = 'Severe'
     
     print('\n'+'-'*60)
     print('PREDICTION RESULT')
@@ -103,17 +100,10 @@ def main():
     print(f'AHI Proxy: {ahi} events/hour')
     print(f'Severity: {sev}')
     print('-'*60)
-    print('\n[MODEL] CNN-BiLSTM + Attention with Spectrogram + RR + SpO2 fusion')
-    print('[DATA] Using trained weights from weights/fusion_best.pth')
+    print('\n[MODEL] CNN-BiLSTM + Attention | Spectrogram(ResNet18) + RR(BiLSTM) + SpO2(MLP)')
     print('='*60)
     
-    result = {
-        'prediction': pred,
-        'confidence': conf,
-        'ahi_proxy': ahi,
-        'severity': sev,
-        'input_file': args.input
-    }
+    result = {'prediction': pred, 'confidence': conf, 'ahi_proxy': ahi, 'severity': sev, 'input_file': args.input}
     with open('prediction_result.json', 'w') as f:
         json.dump(result, f, indent=2)
     print('\nResult saved to prediction_result.json')
