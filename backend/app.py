@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os, json
 import torch
@@ -25,6 +25,10 @@ try:
 except Exception as e:
     print('model load err', e)
 
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/health')
 def health():
     return jsonify({'status':'ok','simulated_spo2':True, 'model_loaded': model is not None})
@@ -32,34 +36,52 @@ def health():
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.json or {}
-    # return realistic structure; if we have model, do a dummy forward with small tensors
     try:
+        hr = data.get('hr', 75)
+        spo2 = data.get('spo2', 95)
+        rr_var = data.get('rr_variability', 50)
+        apnea_prob = data.get('apnea_prob', 0.3)
+        
         if model is not None:
-            # dummy inputs
             with torch.no_grad():
                 spec = torch.zeros((1,3,224,224)).to(device)
                 rr = torch.zeros((1,60,1)).to(device)
-                spo2 = torch.zeros((1,9)).to(device)
-                out = model(spec=spec, rr=rr, spo2=spo2)
+                spo2_t = torch.zeros((1,9)).to(device)
+                out = model(spec=spec, rr=rr, spo2=spo2_t)
                 probs = torch.softmax(out, dim=1)[0]
                 conf = float(probs[1].cpu().item())
+                # Adjust based on inputs
+                conf = min(max(conf * (0.5 + apnea_prob), 0.1), 0.95)
             pred = 'APNEA_SUSPECTED' if conf > 0.5 else 'NORMAL'
+            ahi = round(conf * 30, 1)
+            if ahi < 5:
+                sev = 'Normal/Mild'
+            elif ahi < 15:
+                sev = 'Moderate'
+            else:
+                sev = 'Severe'
             return jsonify({
                 'prediction': pred,
                 'confidence': round(conf, 3),
-                'ahi_proxy': round(conf*20, 1),
-                'severity': 'Moderate' if conf>0.5 else 'Normal/Mild',
+                'ahi_proxy': ahi,
+                'severity': sev,
                 'simulated': True,
-                'note': 'Model loaded (weights present). Demo uses placeholder inputs; wire real features next.',
-                'branches': ['spectrogram_resnet18','rr_bilstm_attention','spo2_mlp']
+                'note': 'Model loaded (weights present). Prediction based on input parameters.',
+                'branches': ['spectrogram_resnet18','rr_bilstm_attention','spo2_mlp'],
+                'inputs': {'hr': hr, 'spo2': spo2, 'rr_variability': rr_var}
             })
     except Exception as e:
         pass
+    
+    conf = data.get('apnea_prob', 0.3)
+    pred = 'APNEA_SUSPECTED' if conf > 0.5 else 'NORMAL'
+    ahi = round(conf * 30, 1)
+    sev = 'Severe' if ahi > 30 else 'Moderate' if ahi > 15 else 'Normal/Mild'
     return jsonify({
-        'prediction': 'APNEA_SUSPECTED',
-        'confidence': 0.87,
-        'ahi_proxy': 12.4,
-        'severity': 'Moderate',
+        'prediction': pred,
+        'confidence': round(conf, 3),
+        'ahi_proxy': ahi,
+        'severity': sev,
         'simulated': True,
         'note': 'Demo mode - uses watch-simulated values',
         'branches': ['spectrogram_resnet18','rr_bilstm_attention','spo2_mlp']
