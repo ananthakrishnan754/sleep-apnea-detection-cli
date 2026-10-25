@@ -33,7 +33,6 @@ def main():
     print(f'Model loaded from {args.model}')
     print('='*60)
     
-    # Load input
     if args.input.endswith('.npy'):
         ecg = np.load(args.input)
         if ecg.ndim > 1:
@@ -49,7 +48,6 @@ def main():
     
     print(f'Loaded ECG: {len(ecg)} samples')
     
-    # Load SpO2
     if args.spo2:
         if os.path.isfile(args.spo2):
             if args.spo2.endswith('.npy'):
@@ -65,10 +63,10 @@ def main():
     else:
         spo2_arr = np.ones(9) * 95
     
-    # Process
     with torch.no_grad():
         ecg_seg = ecg[:6000] if len(ecg) >= 6000 else np.pad(ecg, (0,6000-len(ecg)))
         spec = ecg_to_spectrogram(ecg_seg)
+        spec = spec[:1, :, :]  # take only first channel
         spec_t = torch.from_numpy(spec).unsqueeze(0).to(device)
         
         rr = extract_rr(ecg_seg)
