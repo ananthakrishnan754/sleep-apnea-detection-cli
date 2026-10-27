@@ -1,0 +1,25 @@
+# Windows Setup Commands - Copy Paste One By One
+
+## Step 1: Clone the repository
+git clone https://github.com/ananthakrishnan754/sleep-apnea-detection-cli.git
+cd sleep-apnea-detection-cli
+
+## Step 2: Create and activate virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+
+## Step 3: Install dependencies
+pip install -r requirements.txt
+
+## Step 4: Test the model prediction
+python cli\predict_file.py --input test_inputs\normal_case_1.npy
+
+## Step 5: Test other cases
+python cli\predict_file.py --input test_inputs\mild_apnea_4.npy
+python cli\predict_file.py --input test_inputs\moderate_apnea_7.npy
+python cli\predict_file.py --input test_inputs\severe_apnea_9.npy
+
+## Notes
+- The model weights (weights/fusion_best.pth) are included in the repository
+- Trained on real PhysioNet Apnea-ECG clinical data (no synthetic datasets)
+- All test inputs are provided
